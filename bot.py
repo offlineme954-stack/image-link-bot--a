@@ -33,6 +33,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔄 প্রসেসিং হচ্ছে ▓▓▓▓▓░░░░░ 50%"
         )
 
+        # ১. টেলিগ্রাম থেকে ছবি ডাউনলোড
         photo_file = await update.message.photo[-1].get_file()
         file_path = await photo_file.download_to_drive()
 
@@ -42,22 +43,26 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔄 প্রায় শেষ ▓▓▓▓▓▓▓▓▓░ 90%"
         )
 
+        # ২. Catbox API-তে ফাইল আপলোড
+        url = "https://catbox.moe/user/api.php"
         with open(file_path, 'rb') as f:
             response = requests.post(
-                'https://telegra.ph/upload',
-                files={'file': ('image.jpg', f, 'image/jpeg')}
+                url,
+                data={'reqtype': 'fileupload'},
+                files={'fileToUpload': f}
             )
-            data = response.json()
 
+        # লোকাল ফাইল ডিলিট করা
         if os.path.exists(file_path):
             os.remove(file_path)
 
-        if isinstance(data, list) and 'src' in data[0]:
-            direct_link = f"https://telegra.ph{data[0]['src']}"
+        # ৩. ডাইরেক্ট লিঙ্ক প্রাপ্তি ও রেসপন্স
+        if response.status_code == 200 and response.text.startswith('http'):
+            direct_link = response.text.strip()
 
             final_text = (
                 "✅ **আপনার ছবির ডাইরেক্ট লিঙ্ক তৈরি সম্পন্ন হয়েছে!**\n\n"
-                f"🔗 **ডাইরেক্ট লিঙ্ক:**\n`{direct_link}`\n\n"
+                f"🔗 **ডাইরেক্ট লিঙ্ক:**\n{direct_link}\n\n"
                 "🌐 **ব্যবহারের ক্ষেত্র:**\n"
                 "এটি একটি সরাসরি (Direct Image Link)। আপনি এই লিঙ্কটি আপনার যেকোনো ওয়েবসাইট, অ্যাপ, HTML ট্যাগ (`<img src=\"...\">`) বা অন্য যেকোনো কাজের ক্ষেত্রে সরাসরি ব্যবহার করতে পারবেন।"
             )
