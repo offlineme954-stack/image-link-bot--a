@@ -1,4 +1,4 @@
-        import logging
+import logging
 import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -25,19 +25,19 @@ ADMIN_CHAT_ID = "8402780798"
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     welcome_text = (
-        f"✨ **আসসালামু আলাইকুম, {user.first_name}!** ✨\n\n"
-        "👑 **Atikul Image To Link Pro Bot**-এ আপনাকে স্বাগতম!\n"
+        f"✨ <b>আসসালামু আলাইকুম, {user.first_name}!</b> ✨\n\n"
+        "👑 <b>Atikul Image To Link Pro Bot</b>-এ আপনাকে স্বাগতম!\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📸 **আপনার ছবিটি এখানে পেস্ট / সেন্ড করুন:**\n"
+        "📸 <b>আপনার ছবিটি এখানে পেস্ট / সেন্ড করুন:</b>\n"
         "যেকোনো ছবি পাঠালেই চোখের পলকে তৈরি হয়ে যাবে তার ডাইরেক্ট হাই-স্পিড লিংক।\n\n"
-        "🚀 **প্রিমিয়াম ফিচারসমূহ:**\n"
+        "🚀 <b>প্রিমিয়াম ফিচারসমূহ:</b>\n"
         "├ ⚡ Instant Direct Web Link\n"
         "├ 🗑️ Auto-Delete Uploaded Image\n"
         "├ ✨ AI Image HD Upscale Tool\n"
         "├ 🎨 One-Click Background Remover\n"
         "└ 📱 Auto QR Code Generator\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "👇 *শুরু করতে এখনই আপনার ছবিটি নিচে পাঠাই দিন!*"
+        "👇 <i>শুরু করতে এখনই আপনার ছবিটি নিচে পাঠাই দিন!</i>"
     )
 
     keyboard = [
@@ -49,7 +49,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        welcome_text, parse_mode="Markdown", reply_markup=reply_markup
+        welcome_text, parse_mode="HTML", reply_markup=reply_markup
     )
 
 
@@ -64,11 +64,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif message.document and message.document.mime_type and message.document.mime_type.startswith("image/"):
         photo_file = await message.document.get_file()
     else:
-        await message.reply_text("❌ *অনুগ্রহ করে একটি বৈধ ছবি বা ইমেজ ফাইল পাঠান!*", parse_mode="Markdown")
+        await message.reply_text("❌ <b>অনুগ্রহ করে একটি বৈধ ছবি বা ইমেজ ফাইল পাঠান!</b>", parse_mode="HTML")
         return
 
     # Animated Processing Status
-    status_msg = await message.reply_text("⚡ *ছবি প্রসেসিং হচ্ছে... লিংক তৈরি শেষ হলে ছবিটি অটো মুছে যাবে...*", parse_mode="Markdown")
+    status_msg = await message.reply_text("⚡ <b>ছবি প্রসেসিং হচ্ছে... লিংক তৈরি শেষ হলে ছবিটি অটো মুছে যাবে...</b>", parse_mode="HTML")
 
     try:
         # Download image into memory
@@ -104,10 +104,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await status_msg.edit_text(
-                "🎉 *আপনার ছবির ডায়রেক্ট লিংক প্রস্তুত!*\n"
+                "🎉 <b>আপনার ছবির ডায়রেক্ট লিংক প্রস্তুত!</b>\n"
                 "✨ (মূল ছবিটি সফলভাবে মুছে ফেলা হয়েছে)\n\n"
-                "👇 *নিচের বাটনটিতে ক্লিক করে আপনার লিংকটি সংগ্রহ করুন:*",
-                parse_mode="Markdown",
+                "👇 <b>নিচের বাটনটিতে ক্লিক করে আপনার লিংকটি সংগ্রহ করুন:</b>",
+                parse_mode="HTML",
                 reply_markup=reply_markup
             )
 
@@ -121,20 +121,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 user_info = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
                 admin_text = (
-                    "🔔 **নতুন ছবি আপলোড হয়েছে!**\n\n"
-                    f"👤 **ইউজার:** {user_info} (`{message.from_user.id}`)\n"
-                    f"🔗 **লিংক:** {direct_link}"
+                    "🔔 <b>নতুন ছবি আপলোড হয়েছে!</b>\n\n"
+                    f"👤 <b>ইউজার:</b> {user_info} (<code>{message.from_user.id}</code>)\n"
+                    f"🔗 <b>লিংক:</b> {direct_link}"
                 )
-                await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text, parse_mode="Markdown")
+                await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text, parse_mode="HTML")
             except Exception as admin_err:
                 logger.error(f"Failed to notify admin: {admin_err}")
 
         else:
-            await status_msg.edit_text("❌ *ছবি আপলোড করতে ব্যর্থ হয়েছে! আবার চেষ্টা করুন।*", parse_mode="Markdown")
+            await status_msg.edit_text("❌ <b>ছবি আপলোড করতে ব্যর্থ হয়েছে! আবার চেষ্টা করুন।</b>", parse_mode="HTML")
 
     except Exception as e:
         logger.error(f"Error processing image: {e}")
-        await status_msg.edit_text("⚠️ *সার্ভারে সমস্যা হয়েছে! কিছু সময় পর চেষ্টা করুন।*", parse_mode="Markdown")
+        await status_msg.edit_text("⚠️ <b>সার্ভারে সমস্যা হয়েছে! কিছু সময় পর চেষ্টা করুন।</b>", parse_mode="HTML")
 
 
 # ---------------- BUTTON CALLBACK HANDLER ---------------- #
@@ -150,37 +150,37 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "get_link":
         await query.answer("✅ লিংক তৈরি সম্পন্ন!", show_alert=False)
         response_text = (
-            "💎 **আপনার ছবির ডাইরেক্ট লিংক:**\n\n"
-            f"`{link}`\n\n"
-            "👆 *লিংকটির ওপর টাচ/ট্যাপ করলেই কপি হয়ে যাবে!*"
+            "💎 <b>আপনার ছবির ডাইরেক্ট লিংক:</b>\n\n"
+            f"<code>{link}</code>\n\n"
+            "👆 <i>লিংকটির ওপর টাচ/ট্যাপ করলেই কপি হয়ে যাবে!</i>"
         )
-        await query.message.reply_text(response_text, parse_mode="Markdown")
+        await query.message.reply_text(response_text, parse_mode="HTML")
 
     elif action == "ai_hd":
         await query.answer("✨ AI HD Enhancer টুল লোড হচ্ছে...", show_alert=False)
         ai_url = f"https://upscalepic.com/?ref_img={link}"
         response_text = (
-            "✨ **AI HD Image Enhancer:**\n\n"
+            "✨ <b>AI HD Image Enhancer:</b>\n\n"
             f"আপনার ছবিটির রেজুলেশন ও কোয়ালিটি HD করতে নিচের টুলটি ব্যবহার করুন:\n🔗 {ai_url}"
         )
-        await query.message.reply_text(response_text, parse_mode="Markdown")
+        await query.message.reply_text(response_text, parse_mode="HTML")
 
     elif action == "bg_rem":
         await query.answer("🎨 Background Remover লোড হচ্ছে...", show_alert=False)
         bg_url = "https://www.remove.bg/upload"
         response_text = (
-            "🎨 **Background Remover Tool:**\n\n"
+            "🎨 <b>Background Remover Tool:</b>\n\n"
             f"ছবি থেকে ব্যাকগ্রাউন্ড রিমুভ করতে নিচের লিংকে যান:\n🔗 {bg_url}"
         )
-        await query.message.reply_text(response_text, parse_mode="Markdown")
+        await query.message.reply_text(response_text, parse_mode="HTML")
 
     elif action == "make_qr":
         await query.answer("📱 QR Code তৈরি করা হচ্ছে...", show_alert=False)
         qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={link}"
         await query.message.reply_photo(
             photo=qr_api_url,
-            caption=f"📱 **আপনার ছবির QR Code:**\n\n`{link}`",
-            parse_mode="Markdown"
+            caption=f"📱 <b>আপনার ছবির QR Code:</b>\n\n<code>{link}</code>",
+            parse_mode="HTML"
         )
 
 
@@ -199,4 +199,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+        
