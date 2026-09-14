@@ -1,151 +1,192 @@
-import os
 import logging
 import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 # Logging Setup
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
-# ------------------------------------------------------------------
-# Bot Credentials Configured
+# Config Credentials
 BOT_TOKEN = "8649227717:AAEj9lgvTmu87PRP8gStEPkrx0ZZODbPifs"
 ADMIN_CHAT_ID = "8402780798"
-# ------------------------------------------------------------------
 
-# Dual API Direct Image Upload (Catbox + ImgBB Backup)
-def upload_image_api(file_path):
-    # API 1: Catbox.moe
-    try:
-        url = "https://catbox.moe/user/api.php"
-        data = {"reqtype": "fileupload"}
-        with open(file_path, "rb") as f:
-            files = {"fileToUpload": f}
-            res = requests.post(url, data=data, files=files, timeout=25)
-        if res.status_code == 200 and res.text.startswith("http"):
-            return res.text.strip()
-    except Exception as e:
-        logging.error(f"Catbox Upload Failed: {e}")
+# ---------------- COMMAND HANDLERS ---------------- #
 
-    # API 2: ImgBB Alternative Endpoint (Fallback)
-    try:
-        url = "https://api.imgbb.com/1/upload"
-        params = {"key": "6d002710c72170e58042323c4355d042"} # Public high-speed key
-        with open(file_path, "rb") as f:
-            files = {"image": f}
-            res = requests.post(url, params=params, files=files, timeout=25)
-        if res.status_code == 200:
-            json_data = res.json()
-            return json_data["data"]["url"]
-    except Exception as e:
-        logging.error(f"ImgBB Upload Failed: {e}")
-
-    return None
-
-# Command: /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_name = update.effective_user.first_name
-
+    user = update.effective_user
     welcome_text = (
-        f"✨ *Welcome, {user_name}!*\n\n"
-        f"🤖 *Atikul Image-to-Link Bot*-এ আপনাকে স্বাগতম!\n\n"
-        f"📸 *আপনার ছবিটি এখনই সেন্ড করুন* (Photo অথবা File/Document হিসেবে)।\n"
-        f"আমি নিমেষেই একটি আল্ট্রা-ফাস্ট ডাইরেক্ট লিঙ্ক (Direct URL) তৈরি করে দেব!"
+        f"✨ **আসসালামু আলাইকুম, {user.first_name}!** ✨\n\n"
+        "👑 **Atikul Image To Link Pro Bot**-এ আপনাকে স্বাগতম!\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📸 **আপনার ছবিটি এখানে পেস্ট / সেন্ড করুন:**\n"
+        "যেকোনো ছবি পাঠালেই চোখের পলকে তৈরি হয়ে যাবে তার ডাইরেক্ট হাই-স্পিড লিংক।\n\n"
+        "🚀 **প্রিমিয়াম ফিচারসমূহ:**\n"
+        "├ ⚡ Instant Direct Web Link\n"
+        "├ ✨ AI Image HD Upscale Tool\n"
+        "├ 🎨 One-Click Background Remover\n"
+        "└ 📱 Auto QR Code Generator\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 *শুরু করতে এখনই আপনার ছবিটি নিচে পাঠাই দিন!*"
     )
 
     keyboard = [
-        [InlineKeyboardButton("📤 Upload Image Now", callback_query_data="prompt_upload")],
-        [InlineKeyboardButton("🌐 Developer & Support", url="https://t.me/atqul_services_bot")]
+        [
+            InlineKeyboardButton("📢 Developer Channel", url="https://t.me/atiqul_services_bot"),
+            InlineKeyboardButton("👨‍💻 Admin Contact", url=f"tg://user?id={ADMIN_CHAT_ID}")
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=reply_markup)
+    await update.message.reply_text(
+        welcome_text, parse_mode="Markdown", reply_markup=reply_markup
+    )
 
-# Button Callbacks
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# ---------------- PHOTO PROCESSING ---------------- #
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    photo_file = None
+
+    if message.photo:
+        photo_file = await message.photo[-1].get_file()
+    elif message.document and message.document.mime_type and message.document.mime_type.startswith("image/"):
+        photo_file = await message.document.get_file()
+    else:
+        await message.reply_text("❌ *অনুগ্রহ করে একটি বৈধ ছবি বা ইমেজ ফাইল পাঠান!*", parse_mode="Markdown")
+        return
+
+    # Animated Processing Status
+    status_msg = await message.reply_text("⚡ *ছবি প্রসেসিং হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন...*", parse_mode="Markdown")
+
+    try:
+        # Download image into memory
+        file_bytes = await photo_file.download_as_bytearray()
+
+        # Upload to Catbox Primary API
+        response = requests.post(
+            "https://catbox.moe/user/api.php",
+            data={"reqtype": "fileupload"},
+            files={"fileToUpload": file_bytes},
+            timeout=20,
+        )
+
+        if response.status_code == 200:
+            direct_link = response.text.strip()
+
+            # Dynamic & Animated Premium Buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("🔗 ছবির লিংক নিন (Direct Link)", callback_data=f"get_link|{direct_link}")
+                ],
+                [
+                    InlineKeyboardButton("✨ AI HD Enhancer", callback_data=f"ai_hd|{direct_link}"),
+                    InlineKeyboardButton("🎨 BG Remover", callback_data=f"bg_rem|{direct_link}")
+                ],
+                [
+                    InlineKeyboardButton("📱 QR Code তৈরি করুন", callback_data=f"make_qr|{direct_link}")
+                ],
+                [
+                    InlineKeyboardButton("🌐 ব্রাউজারে অপেন করুন", url=direct_link)
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await status_msg.edit_text(
+                "🎉 *আপনার ছবির ডায়রেক্ট লিংক প্রস্তুত!*\n\n"
+                "👇 *নিচের বাটনটিতে ক্লিক করে আপনার লিংকটি সংগ্রহ করুন:*",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+
+            # Notify Admin (Background Task)
+            try:
+                user_info = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
+                admin_text = (
+                    "🔔 **নতুন ছবি আপলোড হয়েছে!**\n\n"
+                    f"👤 **ইউজার:** {user_info} (`{message.from_user.id}`)\n"
+                    f"🔗 **লিংক:** {direct_link}"
+                )
+                await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text, parse_mode="Markdown")
+            except Exception as admin_err:
+                logger.error(f"Failed to notify admin: {admin_err}")
+
+        else:
+            await status_msg.edit_text("❌ *ছবি আপলোড করতে ব্যর্থ হয়েছে! আবার চেষ্টা করুন।*", parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error(f"Error processing image: {e}")
+        await status_msg.edit_text("⚠️ *সার্ভারে সমস্যা হয়েছে! কিছু সময় পর চেষ্টা করুন।*", parse_mode="Markdown")
+
+
+# ---------------- BUTTON CALLBACK HANDLER ---------------- #
+
+async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    
+    # Extract Data
+    data = query.data.split("|")
+    action = data[0]
+    link = data[1] if len(data) > 1 else ""
 
-    if query.data == "prompt_upload":
-        await query.edit_message_text(
-            "📥 *অনুগ্রহ করে আপনার ছবিটি এখনই চ্যাটে সেন্ড করুন...*\n\n"
-            "⚡ _সরাসরি ফটো অথবা ফাইল যেকোনোভাবে পাঠাতে পারেন।_",
+    if action == "get_link":
+        await query.answer("✅ লিংক তৈরি সম্পন্ন!", show_alert=False)
+        response_text = (
+            "💎 **আপনার ছবির ডাইরেক্ট লিংক:**\n\n"
+            f"`{link}`\n\n"
+            "👆 *লিংকটির ওপর টাচ/ট্যাপ করলেই কপি হয়ে যাবে!*"
+        )
+        await query.message.reply_text(response_text, parse_mode="Markdown")
+
+    elif action == "ai_hd":
+        await query.answer("✨ AI HD Enhancer টুল লোড হচ্ছে...", show_alert=False)
+        ai_url = f"https://upscalepic.com/?ref_img={link}"
+        response_text = (
+            "✨ **AI HD Image Enhancer:**\n\n"
+            f"আপনার ছবিটির রেজুলেশন ও কোয়ালিটি HD করতে নিচের টুলটি ব্যবহার করুন:\n🔗 {ai_url}"
+        )
+        await query.message.reply_text(response_text, parse_mode="Markdown")
+
+    elif action == "bg_rem":
+        await query.answer("🎨 Background Remover লোড হচ্ছে...", show_alert=False)
+        bg_url = "https://www.remove.bg/upload"
+        response_text = (
+            "🎨 **Background Remover Tool:**\n\n"
+            f"ছবি থেকে ব্যাকগ্রাউন্ড রিমুভ করতে নিচের লিংকে যান:\n🔗 {bg_url}"
+        )
+        await query.message.reply_text(response_text, parse_mode="Markdown")
+
+    elif action == "make_qr":
+        await query.answer("📱 QR Code তৈরি করা হচ্ছে...", show_alert=False)
+        qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={link}"
+        await query.message.reply_photo(
+            photo=qr_api_url,
+            caption=f"📱 **আপনার ছবির QR Code:**\n\n`{link}`",
             parse_mode="Markdown"
         )
 
-# Image Handler
-async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message
-    user = update.effective_user
 
-    # Initial Animated Status
-    status_msg = await message.reply_text("⚡ *Processing Image...* [▓░░░░░░░░░] 10%", parse_mode="Markdown")
+# ---------------- MAIN APPLICATION ---------------- #
 
-    try:
-        # Get File ID
-        if message.photo:
-            file_id = message.photo[-1].file_id
-        elif message.document and message.document.mime_type.startswith("image/"):
-            file_id = message.document.file_id
-        else:
-            await status_msg.edit_text("❌ *অনুগ্রহ করে শুধু সঠিক ইমেজ ফাইল পাঠান!*", parse_mode="Markdown")
-            return
-
-        # Progress updates
-        await status_msg.edit_text("🔄 *Downloading from Telegram...* [▓▓▓▓░░░░░░] 40%", parse_mode="Markdown")
-
-        file = await context.bot.get_file(file_id)
-        file_path = f"temp_{file_id}.jpg"
-        await file.download_to_drive(file_path)
-
-        await status_msg.edit_text("🚀 *Generating Direct Link...* [▓▓▓▓▓▓▓▓░░] 80%", parse_mode="Markdown")
-
-        # Upload via Dual API
-        direct_link = upload_image_api(file_path)
-
-        # Cleanup local storage
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-        if direct_link:
-            result_text = (
-                f"✅ *আপনার ছবির ডাইরেক্ট লিঙ্ক প্রস্তুত!*\n\n"
-                f"🔗 *Direct Link:*\n`{direct_link}`\n\n"
-                f"💡 _লিঙ্কে চাপ দিয়ে সহজেই কপি করতে পারবেন।_"
-            )
-            keyboard = [[InlineKeyboardButton("🌐 Open Direct Link", url=direct_link)]]
-            await status_msg.edit_text(result_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
-            # Send Notification to Admin Panel
-            try:
-                admin_notify = (
-                    f"🔔 *New Image Uploaded!*\n\n"
-                    f"👤 *User:* {user.first_name} (@{user.username if user.username else 'N/A'})\n"
-                    f"🆔 *User ID:* `{user.id}`\n"
-                    f"🔗 *Link:* `{direct_link}`"
-                )
-                await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_notify, parse_mode="Markdown")
-            except Exception as admin_err:
-                logging.error(f"Failed to notify admin: {admin_err}")
-        else:
-            await status_msg.edit_text("⚠️ *লিঙ্ক জেনারেট করতে সমস্যা হয়েছে! অনুগ্রহ করে আবার চেষ্টা করুন।*", parse_mode="Markdown")
-
-    except Exception as e:
-        logging.error(f"Error handling image: {e}")
-        await status_msg.edit_text("❌ *একটি অপ্রত্যাশিত সমস্যা হয়েছে। আবার চেষ্টা করুন।*", parse_mode="Markdown")
-
-# Main Runner
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Handlers Registration
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_image))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_photo))
+    app.add_handler(CallbackQueryHandler(button_click))
 
-    print("Bot is online and running smoothly...")
+    print("=== Atikul Image To Link Bot is running natively ===")
     app.run_polling()
 
 if __name__ == "__main__":
