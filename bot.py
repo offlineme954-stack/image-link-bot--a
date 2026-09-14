@@ -1,4 +1,4 @@
-import logging
+        import logging
 import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -32,6 +32,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "যেকোনো ছবি পাঠালেই চোখের পলকে তৈরি হয়ে যাবে তার ডাইরেক্ট হাই-স্পিড লিংক।\n\n"
         "🚀 **প্রিমিয়াম ফিচারসমূহ:**\n"
         "├ ⚡ Instant Direct Web Link\n"
+        "├ 🗑️ Auto-Delete Uploaded Image\n"
         "├ ✨ AI Image HD Upscale Tool\n"
         "├ 🎨 One-Click Background Remover\n"
         "└ 📱 Auto QR Code Generator\n"
@@ -67,7 +68,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Animated Processing Status
-    status_msg = await message.reply_text("⚡ *ছবি প্রসেসিং হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন...*", parse_mode="Markdown")
+    status_msg = await message.reply_text("⚡ *ছবি প্রসেসিং হচ্ছে... লিংক তৈরি শেষ হলে ছবিটি অটো মুছে যাবে...*", parse_mode="Markdown")
 
     try:
         # Download image into memory
@@ -103,11 +104,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await status_msg.edit_text(
-                "🎉 *আপনার ছবির ডায়রেক্ট লিংক প্রস্তুত!*\n\n"
+                "🎉 *আপনার ছবির ডায়রেক্ট লিংক প্রস্তুত!*\n"
+                "✨ (মূল ছবিটি সফলভাবে মুছে ফেলা হয়েছে)\n\n"
                 "👇 *নিচের বাটনটিতে ক্লিক করে আপনার লিংকটি সংগ্রহ করুন:*",
                 parse_mode="Markdown",
                 reply_markup=reply_markup
             )
+
+            # Auto-delete the original user uploaded photo message
+            try:
+                await message.delete()
+            except Exception as del_err:
+                logger.error(f"Failed to delete original message: {del_err}")
 
             # Notify Admin (Background Task)
             try:
