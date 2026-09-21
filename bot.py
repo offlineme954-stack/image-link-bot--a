@@ -1,7 +1,9 @@
+import asyncio
 import logging
-import requests
 import time
-import json
+from io import BytesIO
+
+import aiohttp
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -23,105 +25,134 @@ BOT_TOKEN = "8649227717:AAEj9lgvTmu87PRP8gStEPkrx0ZZODbPifs"
 ADMIN_CHAT_ID = "8402780798"
 REQUIRED_CHANNEL = "@atiqul_services_bot"  # Force Subscribe Channel Username
 
-# Memory Storage for Stats & Anti-Spam
+# Memory Storage for Stats, Admin Logs & Anti-Spam
 USER_COOLDOWN = {}
 TOTAL_UPLOADS = 0
+RECENT_UPLOADS = []  # Admins can view uploaded photo logs here
 
-# ---------------- MULTI-API UPLOADER (5 APIs) ---------------- #
 
-def upload_image_multi_api(file_bytes):
-    # 1. API 1: Catbox
-    try:
-        res = requests.post(
-            "https://catbox.moe/user/api.php",
-            data={"reqtype": "fileupload"},
-            files={"fileToUpload": ("image.jpg", file_bytes)},
-            timeout=10,
-        )
-        if res.status_code == 200 and res.text.startswith("http"):
-            return res.text.strip()
-    except Exception as e:
-        logger.error(f"Catbox API failed: {e}")
+# ---------------- ASYNC HIGH-SPEED MULTI-API UPLOADER ---------------- #
 
-    # 2. API 2: FreeImage.host
-    try:
-        res = requests.post(
-            "https://freeimage.host/api/1/upload",
-            data={"key": "6d207e02198a847aa98d0a2a901485a5", "action": "upload", "format": "json"},
-            files={"source": ("image.jpg", file_bytes)},
-            timeout=10,
-        )
-        if res.status_code == 200:
-            json_data = res.json()
-            if "image" in json_data and "url" in json_data["image"]:
-                return json_data["image"]["url"]
-    except Exception as e:
-        logger.error(f"FreeImage API failed: {e}")
+async def upload_image_multi_api(file_bytes: bytes) -> str | None:
+    """Non-blocking Async Multi-API Uploader.
 
-    # 3. API 3: ImgBB API
-    try:
-        res = requests.post(
-            "https://api.imgbb.com/1/upload",
-            data={"key": "6d207e02198a847aa98d0a2a901485a5"},
-            files={"image": ("image.jpg", file_bytes)},
-            timeout=10,
-        )
-        if res.status_code == 200:
-            json_data = res.json()
-            if "data" in json_data and "url" in json_data["data"]:
-                return json_data["data"]["url"]
-    except Exception as e:
-        logger.error(f"ImgBB API failed: {e}")
+    Supports concurrent users and handles API down failures smoothly.
+    """
+    async with aiohttp.ClientSession() as session:
 
-    # 4. API 4: TmpFiles.org
-    try:
-        res = requests.post(
-            "https://tmpfiles.org/api/v1/upload",
-            files={"file": ("image.jpg", file_bytes)},
-            timeout=10,
-        )
-        if res.status_code == 200:
-            json_data = res.json()
-            if "data" in json_data and "url" in json_data["data"]:
-                # Convert view url to direct download url
-                url = json_data["data"]["url"]
-                return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
-    except Exception as e:
-        logger.error(f"TmpFiles API failed: {e}")
+        # 1. API: Catbox.moe
+        try:
+            data = aiohttp.FormData()
+            data.add_field("reqtype", "fileupload")
+            data.add_field("fileToUpload", BytesIO(file_bytes), filename="image.jpg")
+            async with session.post("https://catbox.moe/user/api.php", data=data, timeout=8) as res:
+                text = await res.text()
+                if res.status == 200 and text.startswith("http"):
+                    return text.strip()
+        except Exception as e:
+            logger.error(f"Catbox API failed: {e}")
 
-    # 5. API 5: Litterbox (Temporary 1 Hour Backup)
-    try:
-        res = requests.post(
-            "https://litterbox.catbox.moe/resources/internals/api.php",
-            data={"reqtype": "fileupload", "time": "1h"},
-            files={"fileToUpload": ("image.jpg", file_bytes)},
-            timeout=10,
-        )
-        if res.status_code == 200 and res.text.startswith("http"):
-            return res.text.strip()
-    except Exception as e:
-        logger.error(f"Litterbox API failed: {e}")
+        # 2. API: FreeImage.host
+        try:
+            data = aiohttp.FormData()
+            data.add_field("key", "6d207e02198a847aa98d0a2a901485a5")
+            data.add_field("action", "upload")
+            data.add_field("format", "json")
+            data.add_field("source", BytesIO(file_bytes), filename="image.jpg")
+            async with session.post("https://freeimage.host/api/1/upload", data=data, timeout=8) as res:
+                if res.status == 200:
+                    json_data = await res.json()
+                    if "image" in json_data and "url" in json_data["image"]:
+                        return json_data["image"]["url"]
+        except Exception as e:
+            logger.error(f"FreeImage API failed: {e}")
+
+        # 3. API: ImgBB API
+        try:
+            data = aiohttp.FormData()
+            data.add_field("key", "6d207e02198a847aa98d0a2a901485a5")
+            data.add_field("image", BytesIO(file_bytes), filename="image.jpg")
+            async with session.post("https://api.imgbb.com/1/upload", data=data, timeout=8) as res:
+                if res.status == 200:
+                    json_data = await res.json()
+                    if "data" in json_data and "url" in json_data["data"]:
+                        return json_data["data"]["url"]
+        except Exception as e:
+            logger.error(f"ImgBB API failed: {e}")
+
+        # 4. API: TmpFiles.org
+        try:
+            data = aiohttp.FormData()
+            data.add_field("file", BytesIO(file_bytes), filename="image.jpg")
+            async with session.post("https://tmpfiles.org/api/v1/upload", data=data, timeout=8) as res:
+                if res.status == 200:
+                    json_data = await res.json()
+                    if "data" in json_data and "url" in json_data["data"]:
+                        url = json_data["data"]["url"]
+                        return url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+        except Exception as e:
+            logger.error(f"TmpFiles API failed: {e}")
+
+        # 5. API: ImgHippo API
+        try:
+            data = aiohttp.FormData()
+            data.add_field("api_key", "6d207e02198a847aa98d0a2a901485a5")
+            data.add_field("file", BytesIO(file_bytes), filename="image.jpg")
+            async with session.post("https://api.imghippo.com/v1/upload", data=data, timeout=8) as res:
+                if res.status == 200:
+                    json_data = await res.json()
+                    if json_data.get("success") and "data" in json_data:
+                        return json_data["data"]["url"]
+        except Exception as e:
+            logger.error(f"ImgHippo API failed: {e}")
+
+        # 6. API: Litterbox (Backup 1 Hour Storage)
+        try:
+            data = aiohttp.FormData()
+            data.add_field("reqtype", "fileupload")
+            data.add_field("time", "1h")
+            data.add_field("fileToUpload", BytesIO(file_bytes), filename="image.jpg")
+            async with session.post("https://litterbox.catbox.moe/resources/internals/api.php", data=data, timeout=8) as res:
+                text = await res.text()
+                if res.status == 200 and text.startswith("http"):
+                    return text.strip()
+        except Exception as e:
+            logger.error(f"Litterbox API failed: {e}")
+
+        # 7. API: File.io
+        try:
+            data = aiohttp.FormData()
+            data.add_field("file", BytesIO(file_bytes), filename="image.jpg")
+            async with session.post("https://file.io", data=data, timeout=8) as res:
+                if res.status == 200:
+                    json_data = await res.json()
+                    if json_data.get("success"):
+                        return json_data.get("link")
+        except Exception as e:
+            logger.error(f"File.io API failed: {e}")
 
     return None
 
-def shorten_url(long_url):
+async def shorten_url(long_url: str) -> str:
     try:
-        res = requests.get(f"https://tinyurl.com/api-create.php?url={long_url}", timeout=8)
-        if res.status_code == 200:
-            return res.text.strip()
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"https://tinyurl.com/api-create.php?url={long_url}", timeout=5) as res:
+                if res.status == 200:
+                    text = await res.text()
+                    return text.strip()
     except Exception as e:
         logger.error(f"Shortener failed: {e}")
     return long_url
 
 # Helper function to check channel subscription
-async def check_subscription(user_id, context):
+async def check_subscription(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
         if member.status in ["creator", "administrator", "member"]:
             return True
     except Exception as e:
         logger.error(f"Sub check error: {e}")
-        return True  # If check fails due to permissions, allow user
+        return True  # Allow if channel permissions fail
     return False
 
 
@@ -150,9 +181,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👑 <b>Atikul Image To Link Pro Bot</b>-এ আপনাকে স্বাগতম!\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "📸 <b>আপনার ছবিটি পাঠাই দিন:</b>\n"
-        "যেকোনো ছবি সেন্ড করলেই ৫টি হাই-স্পিড সার্ভার দিয়ে সাথে সাথে লিংক তৈরি হয়ে যাবে।\n\n"
+        "যেকোনো ছবি সেন্ড করলেই একাধিক হাই-স্পিড সার্ভার দিয়ে সাথে সাথে লিংক তৈরি হয়ে যাবে।\n\n"
         "🚀 <b>প্রিমিয়াম ফিচারসমূহ:</b>\n"
-        "├ ⚡ 5x Multi-Server Redundancy\n"
+        "├ ⚡ Fast Multi-Server Backup System\n"
         "├ 🗑️ Auto-Delete Uploaded Image\n"
         "├ 🔗 Short URL Generator (TinyURL)\n"
         "├ ✨ AI Image HD Upscale Tool\n"
@@ -170,6 +201,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ]
 
+    # If the user is the ADMIN, add the Admin Panel button under the keyboard
+    if str(user.id) == ADMIN_CHAT_ID:
+        keyboard.append([InlineKeyboardButton("🛠️ Admin Panel (আপলোড করা ছবিগুলো দেখুন)", callback_data="open_admin_panel")])
+
     await update.message.reply_text(
         welcome_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -182,7 +217,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------- PHOTO PROCESSING ---------------- #
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global TOTAL_UPLOADS
+    global TOTAL_UPLOADS, RECENT_UPLOADS
     message = update.message
     user_id = message.from_user.id
 
@@ -192,10 +227,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("⚠️ <b>অনুগ্রহ করে আগে আমাদের চ্যানেলে জয়েন করুন!</b>\nকমান্ড: /start", parse_mode="HTML")
         return
 
-    # Anti-Spam Rate Limit (5 seconds cooldown)
+    # Anti-Spam Rate Limit (3 seconds cooldown)
     current_time = time.time()
-    if user_id in USER_COOLDOWN and current_time - USER_COOLDOWN[user_id] < 5:
-        await message.reply_text("⚠️ <b>স্প্যাম রোধে প্রতি ৫ সেকেন্ড পর পর ছবি পাঠান!</b>", parse_mode="HTML")
+    if user_id in USER_COOLDOWN and current_time - USER_COOLDOWN[user_id] < 3:
+        await message.reply_text("⚠️ <b>স্প্যাম রোধে প্রতি ৩ সেকেন্ড পর পর ছবি পাঠান!</b>", parse_mode="HTML")
         return
     USER_COOLDOWN[user_id] = current_time
 
@@ -217,10 +252,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         file_bytes = await photo_file.download_as_bytearray()
-        direct_link = upload_image_multi_api(file_bytes)
+        direct_link = await upload_image_multi_api(file_bytes)
 
         if direct_link:
             TOTAL_UPLOADS += 1
+
+            # Save in Admin History Log (keeps last 30 uploads)
+            user_info = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
+            RECENT_UPLOADS.insert(0, {
+                "user": user_info,
+                "user_id": user_id,
+                "link": direct_link,
+                "size": file_size_kb
+            })
+            if len(RECENT_UPLOADS) > 30:
+                RECENT_UPLOADS.pop()
+
             keyboard = [
                 [InlineKeyboardButton("🔗 ছবির লিংক নিন (Direct Link)", callback_data=f"get_link|{direct_link}")],
                 [
@@ -251,7 +298,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Notify Admin
             try:
-                user_info = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
                 admin_text = (
                     "🔔 <b>নতুন ছবি আপলোড হয়েছে!</b>\n\n"
                     f"👤 <b>ইউজার:</b> {user_info} (<code>{message.from_user.id}</code>)\n"
@@ -292,13 +338,36 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
+    elif action == "open_admin_panel":
+        if str(query.from_user.id) != ADMIN_CHAT_ID:
+            await query.answer("❌ আপনি অ্যাডমিন নন!", show_alert=True)
+            return
+
+        await query.answer("🛠️ অ্যাডমিন প্যানেল লোড হচ্ছে...")
+
+        if not RECENT_UPLOADS:
+            await query.message.reply_text("📂 <b>এখনো কোনো ছবি আপলোড করা হয়নি!</b>", parse_mode="HTML")
+            return
+
+        log_text = f"🛠️ <b>অ্যাডমিন প্যানেল (সর্বশেষ {len(RECENT_UPLOADS)} টি ছবি):</b>\n"
+        log_text += f"📊 <b>সর্বমোট আপলোড:</b> <code>{TOTAL_UPLOADS}</code> টি\n━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        for idx, item in enumerate(RECENT_UPLOADS[:15], 1):
+            log_text += (
+                f"<b>{idx}. ইউজার:</b> {item['user']} (<code>{item['user_id']}</code>)\n"
+                f"   📦 <b>সাইজ:</b> {item['size']} KB\n"
+                f"   🔗 <b>লিংক:</b> {item['link']}\n\n"
+            )
+
+        await query.message.reply_text(log_text, parse_mode="HTML", disable_web_page_preview=True)
+
     elif action == "get_link":
         await query.answer("✅ লিংক প্রস্তুত!", show_alert=False)
         await query.message.reply_text(f"💎 <b>আপনার ডাইরেক্ট লিংক:</b>\n\n<code>{link}</code>", parse_mode="HTML")
 
     elif action == "short_link":
         await query.answer("✂️ শর্ট লিংক তৈরি হচ্ছে...", show_alert=False)
-        s_url = shorten_url(link)
+        s_url = await shorten_url(link)
         await query.message.reply_text(f"✂️ <b>আপনার শর্ট লিংক:</b>\n\n<code>{s_url}</code>", parse_mode="HTML")
 
     elif action == "img_info":
