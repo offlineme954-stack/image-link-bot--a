@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from io import BytesIO
+from typing import Optional
 
 import aiohttp
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -33,9 +34,8 @@ RECENT_UPLOADS = []  # Admins can view uploaded photo logs here
 
 # ---------------- ASYNC HIGH-SPEED MULTI-API UPLOADER ---------------- #
 
-async def upload_image_multi_api(file_bytes: bytes) -> str | None:
+async def upload_image_multi_api(file_bytes: bytes) -> Optional[str]:
     """Non-blocking Async Multi-API Uploader.
-
     Supports concurrent users and handles API down failures smoothly.
     """
     async with aiohttp.ClientSession() as session:
@@ -106,7 +106,7 @@ async def upload_image_multi_api(file_bytes: bytes) -> str | None:
         except Exception as e:
             logger.error(f"ImgHippo API failed: {e}")
 
-        # 6. API: Litterbox (Backup 1 Hour Storage)
+        # 6. API: Litterbox (Backup Storage)
         try:
             data = aiohttp.FormData()
             data.add_field("reqtype", "fileupload")
@@ -402,4 +402,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-            
+        
