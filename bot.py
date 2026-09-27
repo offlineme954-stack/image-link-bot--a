@@ -510,4 +510,4 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
-    app.add_hatelegram.ext
+    app.add_ha
