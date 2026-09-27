@@ -407,7 +407,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-        # Auto-delete original image message
+        # Auto-delete original image message from user
         try:
             await message.delete()
         except Exception:
@@ -510,4 +510,4 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
-    app.add_handler(Mess
+    app.add_hatelegram.ext
